@@ -133,9 +133,9 @@ def create(req, sock, client, server, cfg):
             environ['CONTENT_LENGTH'] = hdr_value
             continue
 
-        if not cfg.uwsgi:
-            key = 'HTTP_' + hdr_name
         key = hdr_name.replace('-', '_')
+        if not cfg.uwsgi:
+            key = 'HTTP_' + key
         if key in environ and (not cfg.uwsgi or (cfg.uwsgi and key.startswith("HTTP_"))):
             hdr_value = "%s,%s" % (environ[key], hdr_value)
         environ[key] = hdr_value
