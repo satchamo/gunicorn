@@ -25,6 +25,8 @@ DEFAULT_MAX_HEADERFIELD_SIZE = 8190
 HEADER_RE = re.compile(r"[\x00-\x1F\x7F()<>@,;:\[\]={} \t\\\"]")
 METH_RE = re.compile(r"[A-Z0-9$-_.]{3,20}")
 VERSION_RE = re.compile(r"HTTP/(\d+)\.(\d+)")
+UWSGI_HEADER_STRUCT = struct.Struct("<BHB")
+UWSGI_LENGTH_STRUCT = struct.Struct("<H")
 
 
 class Message(object):
@@ -191,14 +193,14 @@ class Request(Message):
     def uwsgi_parse(self, unreader, buf):
         # I don't understand this unreader/buf stuff...
         buf.seek(0)
-        modifier1, datasize, modifier2 = struct.unpack("<BHB", buf.read(4))
+        modifier1, datasize, modifier2 = UWSGI_HEADER_STRUCT.unpack(buf.read(4))
 
         read_length = 0
         headers = []
         while read_length < datasize:
-            key_length = struct.unpack("<H", buf.read(2))[0]
+            key_length = UWSGI_LENGTH_STRUCT.unpack(buf.read(2))[0]
             key = buf.read(key_length)
-            value_length = struct.unpack("<H", buf.read(2))[0]
+            value_length = UWSGI_LENGTH_STRUCT.unpack(buf.read(2))[0]
             value = buf.read(value_length)
             headers.append((bytes_to_str(key), bytes_to_str(value)))
             read_length += 4 + key_length + value_length
