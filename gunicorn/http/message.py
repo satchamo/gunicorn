@@ -6,6 +6,7 @@
 import io
 import re
 import socket
+import struct
 
 from gunicorn.http.body import ChunkedReader, LengthReader, EOFReader, Body
 from gunicorn.http.errors import (
@@ -126,7 +127,7 @@ class Message(object):
         content_length = None
 
         for (name, value) in self.headers:
-            if name == "CONTENT-LENGTH":
+            if name == "CONTENT-LENGTH" or name == "CONTENT_LENGTH":
                 if content_length is not None:
                     raise InvalidHeader("CONTENT-LENGTH", req=self)
                 content_length = value
@@ -138,7 +139,7 @@ class Message(object):
             self.body = Body(ChunkedReader(self, self.unreader))
         elif content_length is not None:
             try:
-                content_length = int(content_length)
+                content_length = 0 if content_length == "" else int(content_length)
             except ValueError:
                 raise InvalidHeader("CONTENT-LENGTH", req=self)
 
@@ -187,9 +188,40 @@ class Request(Message):
             raise NoMoreData(buf.getvalue())
         buf.write(data)
 
+    def uwsgi_parse(self, unreader, buf):
+        # I don't understand this unreader/buf stuff...
+        buf.seek(0)
+        modifier1, datasize, modifier2 = struct.unpack("<BHB", buf.read(4))
+
+        read_length = 0
+        headers = []
+        while read_length < datasize:
+            key_length = struct.unpack("<H", buf.read(2))[0]
+            key = buf.read(key_length)
+            value_length = struct.unpack("<H", buf.read(2))[0]
+            value = buf.read(value_length)
+            headers.append((bytes_to_str(key), bytes_to_str(value)))
+            read_length += 4 + key_length + value_length
+
+        self.headers = headers
+        # set the variables that the original parse() method sets
+        for k, v in headers:
+            if k == "REQUEST_METHOD":
+                self.method = v
+            elif k == "REQUEST_URI":
+                self.uri = split_request_uri(v)
+                self.path = self.uri.path
+                self.query = self.uri.query
+                self.fragment = self.uri.fragment
+        # We're not talking HTTP, but I think this does the right thing
+        self.version = (1,0)
+        return buf.read()
+
     def parse(self, unreader):
         buf = io.BytesIO()
         self.get_data(unreader, buf, stop=True)
+        if self.cfg.uwsgi:
+            return self.uwsgi_parse(unreader, buf)
 
         # get request line
         line, rbuf = self.read_line(unreader, buf, self.limit_request_line)

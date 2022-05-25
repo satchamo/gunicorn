@@ -2188,3 +2188,12 @@ class StripHeaderSpaces(Setting):
 
         Use with care and only if necessary.
         """
+
+class Uwsgi(Setting):
+    name = "uwsgi"
+    section = "Uwsgi"
+    cli = ["--uwsgi"]
+    validator = validate_bool
+    action = 'store_true'
+    default = False
+    desc = """Uwsgi stuff"""

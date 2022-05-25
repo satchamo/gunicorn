@@ -126,15 +126,15 @@ def create(req, sock, client, server, cfg):
             host = hdr_value
         elif hdr_name == "SCRIPT_NAME":
             script_name = hdr_value
-        elif hdr_name == "CONTENT-TYPE":
+        elif hdr_name == "CONTENT-TYPE" or hdr_name == "CONTENT_TYPE":
             environ['CONTENT_TYPE'] = hdr_value
             continue
-        elif hdr_name == "CONTENT-LENGTH":
+        elif hdr_name == "CONTENT-LENGTH" or hdr_name == "CONTENT_LENGTH":
             environ['CONTENT_LENGTH'] = hdr_value
             continue
 
-        key = 'HTTP_' + hdr_name.replace('-', '_')
-        if key in environ:
+        key = hdr_name.replace('-', '_')
+        if key in environ and (not cfg.uwsgi or (cfg.uwsgi and key.startswith("HTTP_"))):
             hdr_value = "%s,%s" % (environ[key], hdr_value)
         environ[key] = hdr_value
 
@@ -145,7 +145,10 @@ def create(req, sock, client, server, cfg):
     # authors should be aware that REMOTE_HOST and REMOTE_ADDR
     # may not qualify the remote addr:
     # http://www.ietf.org/rfc/rfc3875
-    if isinstance(client, str):
+    if cfg.uwsgi:
+        # we expect a uwsgi parameter for the REMOTE_ADDR
+        pass
+    elif isinstance(client, str):
         environ['REMOTE_ADDR'] = client
     elif isinstance(client, bytes):
         environ['REMOTE_ADDR'] = client.decode()
