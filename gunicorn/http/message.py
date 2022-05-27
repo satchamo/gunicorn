@@ -216,7 +216,7 @@ class Request(Message):
                 self.query = self.uri.query
                 self.fragment = self.uri.fragment
         # We're not talking HTTP, but I think this does the right thing
-        self.version = (1,0)
+        self.version = (1,1)
         return buf.read()
 
     def parse(self, unreader):
