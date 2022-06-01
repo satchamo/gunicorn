@@ -190,20 +190,49 @@ class Request(Message):
             raise NoMoreData(buf.getvalue())
         buf.write(data)
 
-    def uwsgi_parse(self, unreader, buf):
+    def iter_uwsgi_headers(self, unreader, buf):
         # I don't understand this unreader/buf stuff...
         buf.seek(0)
         modifier1, datasize, modifier2 = UWSGI_HEADER_STRUCT.unpack(buf.read(4))
+        if datasize > self.limit_request_field_size:
+            raise LimitRequestHeaders("limit request headers fields size")
 
         read_length = 0
-        headers = []
         while read_length < datasize:
             key_length = UWSGI_LENGTH_STRUCT.unpack(buf.read(2))[0]
             key = buf.read(key_length)
             value_length = UWSGI_LENGTH_STRUCT.unpack(buf.read(2))[0]
             value = buf.read(value_length)
-            headers.append((bytes_to_str(key), bytes_to_str(value)))
+            yield bytes_to_str(key), bytes_to_str(value)
             read_length += 4 + key_length + value_length
+
+    def uwsgi_parse(self, unreader, buf):
+        cfg = self.cfg
+        headers = []
+
+        # handle scheme headers
+        scheme_header = False
+        secure_scheme_headers = {}
+        if ('*' in cfg.forwarded_allow_ips or
+            not isinstance(self.peer_addr, tuple)
+            or self.peer_addr[0] in cfg.forwarded_allow_ips):
+            secure_scheme_headers = cfg.secure_scheme_headers
+
+        for name, value in self.iter_uwsgi_headers(unreader, buf):
+            if len(headers) >= self.limit_request_fields:
+                raise LimitRequestHeaders("limit request headers fields")
+
+            if name in secure_scheme_headers:
+                secure = value == secure_scheme_headers[name]
+                scheme = "https" if secure else "http"
+                if scheme_header:
+                    if scheme != self.scheme:
+                        raise InvalidSchemeHeaders()
+                else:
+                    scheme_header = True
+                    self.scheme = scheme
+
+            headers.append((name, value))
 
         self.headers = headers
         # set the variables that the original parse() method sets
